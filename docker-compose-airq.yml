@@ -1,0 +1,64 @@
+version: '3.3'
+services:
+  kafka:
+    image: confluentinc/cp-kafka:5.4.0
+    hostname: kafka
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_ADVERTISED_LISTENERS: LISTENER_DOCKER_INTERNAL://kafka:19092,LISTENER_DOCKER_EXTERNAL://${DOCKER_HOST_IP:-127.0.0.1}:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: LISTENER_DOCKER_INTERNAL:PLAINTEXT,LISTENER_DOCKER_EXTERNAL:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: LISTENER_DOCKER_INTERNAL
+      KAFKA_ZOOKEEPER_CONNECT: "zookeeper:2181"
+      KAFKA_BROKER_ID: 1
+      KAFKA_LOG4J_LOGGERS: "kafka.controller=INFO,kafka.producer.async.DefaultEventHandler=INFO,state.change.logger=INFO"
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - default
+      - proxy
+    logging:
+      driver: json-file
+    deploy:
+      labels:
+        traefik.enable: 'true'
+        traefik.tcp.routers.kafka_router.entrypoints: kafka
+        traefik.tcp.routers.kafka_router.rule: HostSNI(`*`)
+        traefik.tcp.routers.kafka_router.service: kafka_service
+        traefik.tcp.routers.kafka_router.tls: 'false'
+        traefik.tcp.services.kafka_service.loadbalancer.server.port: '9094'
+      placement:
+        constraints:
+          - node.role == worker
+  zookeeper:
+    image: confluentinc/cp-zookeeper:5.4.0
+    restart: always
+    environment:
+      ZOOKEEPER_SERVER_ID: 1
+      ZOOKEEPER_CLIENT_PORT: "2181"
+      ZOOKEEPER_TICK_TIME: "2000"
+      ZOOKEEPER_SERVERS: "zookeeper:22888:23888"
+    ports:
+      - "2181:2181"
+    networks:
+      - default
+      - proxy
+    logging:
+      driver: json-file
+    deploy:
+      labels:
+        traefik.enable: 'true'
+        traefik.tcp.routers.zookeeper_router.entrypoints: zookeeper
+        traefik.tcp.routers.zookeeper_router.rule: HostSNI(`*`)
+        traefik.tcp.routers.zookeeper_router.service: zookeeper_service
+        traefik.tcp.routers.zookeeper_router.tls: 'false'
+        traefik.tcp.services.zookeeper_service.loadbalancer.server.port: '2181'
+      placement:
+        constraints:
+          - node.role == worker
+networks:
+  default:
+    driver: overlay
+  proxy:
+    external: true
